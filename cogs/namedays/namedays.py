@@ -23,12 +23,12 @@ class Namedays(commands.Cog):
         names_today = [
             entry['name']
             for entry in namedays_data
-            if entry['month'] == str(current_month) and entry['day'] == str(current_day) and>
+            if entry['month'] == str(current_month) and entry['day'] == str(current_day) and entry['include'] == '1'
         ]
 
         if names_today:
             names_str = ", ".join(names_today)
-            await interaction.response.send_message(f"Today's Latvian name days are: {names_>
+            await interaction.response.send_message(f"Today's Latvian name days are: {names_str}")
         else:
             await interaction.response.send_message("No name days today!")
 
