@@ -1,57 +1,39 @@
-from typing import Final
+import discord
+from discord.ext import commands,tasks
 import os
 from dotenv import load_dotenv
-from discord import Intents, Client, Message
-from responses import get_response
+import asyncio
+from itertools import cycle
 
-load_dotenv()
-TOKEN: Final[str] = os.getenv('DISCORD_TOKEN')
+load_dotenv(".env")
+TOKEN: str = os.getenv('TOKEN')
 
-intents: Intents = Intents.default()
-intents.message_content = True # NOQA
-client: Client = Client(intents=intents)
+bot = commands.Bot(command_prefix='!', intents=discord.Intents.all())
 
+bot_statuses = cycle(["Me hungry", "Me sleppy", "Minecraft", "Baba Booey"])
 
-async def send_message(message: Message, user_message: str) -> None:
- if not user_message:
-  print('(Message was empty because intetnts where not enabled probably)')
-  return
+@tasks.loop(seconds=60)
+async def change_bot_status():
+ await bot.change_presence(activity=discord.Game(next(bot_statuses)))
 
-
- if is_private := user_message[0] == '?':
-  user_message = user_message[1:]
-
-
-try:
-  response: str = get_response(user_message)
-  await message.author.send(response) if is_private else await message.channel.send(response)
+@bot.event
+async def on_ready():
+ print("Bot ready!")
+ change_bot_status.start()
+ try:
+  synced_commands = await bot.tree.sync()
+  print(f"Synced {len(synced_commands)} commands.")
  except Exception as e:
-  print(e)
+  print("An error with syncing application commands has occurred: ", e)
 
+async def load():
+ for filename in os.listdir("./cogs"):
+  if filename.endswith(".py"):
+   await bot.load_extension(f"cogs.{filename[:-3]}")
 
+async def main():
+ async with bot:
+  await load()
+  await bot.start(TOKEN)
 
-@client.event
-async def on_ready() -> None:
- print(f'{client.user} is now running!')
-
-
-
-@client.event
-async def on_message(message: Message) -> None:
- if message.author == client.user:
-  return
-
- username: str = str(message.author)
- user_message: str = message.content
- channel: str = str(message.channel)
-
- print(f'[{channel}] {username}: "{user_message}"')
- await send_message(message, user_message)
-
-
-def main() -> None:
- client.run(token=TOKEN)
-
-if __name__ == '__main__':
- main()
-
+asyncio.run(main())
