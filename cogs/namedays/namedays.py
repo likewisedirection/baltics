@@ -1,4 +1,4 @@
-import json
+import csv
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -8,27 +8,55 @@ class Namedays(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="namedays", description="Get Latvian name days for today")
+    @app_commands.command(name="namedays", description="Get Baltic name days for today")
     async def namedays(self, interaction: discord.Interaction):
-        # Get today's date
+        # Get today's date in the format "dd.mm."
         today = datetime.today()
-        current_month = today.month
-        current_day = today.day
+        current_date = today.strftime("%d.%m.")
 
-        # Load the namedays.json file
-        with open("cogs/namedays/namedays.json", "r", encoding="utf-8") as file:
-            namedays_data = json.load(file)
+        # Initialize variables to store today's name days for each country
+        names_lv = ""
+        names_lt = ""
+        names_ee = ""
 
-        # Filter names for today's month and day, where "include" is "1"
-        names_today = [
-            entry['name']
-            for entry in namedays_data
-            if entry['month'] == str(current_month) and entry['day'] == str(current_day) and entry['include'] == '1'
-        ]
+        # Define the file paths
+        files = {
+            "Latvian": "cogs/namedays/namedays_lv.csv",
+            "Lithuanian": "cogs/namedays/namedays_lt.csv",
+            "Estonian": "cogs/namedays/namedays_ee.csv"
+        }
 
-        if names_today:
-            names_str = ", ".join(names_today)
-            await interaction.response.send_message(f"Today's Latvian name days are: {names_str}")
+        # Iterate over the files to find name days
+        for country, file_path in files.items():
+            with open(file_path, "r", encoding="utf-8") as csv_file:
+                csv_reader = csv.reader(csv_file, delimiter=';')
+                for row in csv_reader:
+                    # Assuming the first column is the date and the second column is the names
+                    date = row[0].strip()  # Remove any extra whitespace
+                    names = row[1].strip()  # Remove any extra whitespace
+
+                    # Check if the date matches today's date
+                    if date == current_date:
+                        if country == "Latvian":
+                            names_lv = names
+                        elif country == "Lithuanian":
+                            names_lt = names
+                        elif country == "Estonian":
+                            names_ee = names
+                        break  # Exit the loop since we found today's names
+
+        # Create the response message
+        response = ""
+        if names_lv:
+            response += f"**Latvian Name Days:** {names_lv}\n"
+        if names_lt:
+            response += f"**Lithuanian Name Days:** {names_lt}\n"
+        if names_ee:
+            response += f"**Estonian Name Days:** {names_ee}\n"
+
+        # Send the message, or if no name days were found, inform the user
+        if response:
+            await interaction.response.send_message(response)
         else:
             await interaction.response.send_message("No name days today!")
 
