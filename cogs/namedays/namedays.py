@@ -56,9 +56,9 @@ class Namedays(commands.Cog):
 
         # Send the message, or if no name days were found, inform the user
         if response:
-            await interaction.response.send_message(response)
+            await interaction.response.send_message(response, ephemeral=True)
         else:
-            await interaction.response.send_message("No name days today!")
+            await interaction.response.send_message("No name days today!", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Namedays(bot))
