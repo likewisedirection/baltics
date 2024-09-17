@@ -1,64 +1,105 @@
-import csv
 import discord
 from discord import app_commands
-from discord.ext import commands
-from datetime import datetime
+from discord.ext import commands, tasks
+from datetime import datetime, timedelta
+import mariadb
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+def get_db_connection():
+    return mariadb.connect(
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        host=os.getenv("DB_HOST"),
+        port=int(os.getenv("DB_PORT")),
+        database=os.getenv("DB_NAME")
+    )
 
 class Namedays(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.general_channel_id = int(os.getenv("GENERAL_CHANNEL_ID"))
+
+        self.conn = get_db_connection()
+        self.cursor = self.conn.cursor()
+
+        self.namedays_announcement.start()
+
+    @tasks.loop(hours=24)
+    async def namedays_announcement(self):
+        channel = self.bot.get_channel(self.general_channel_id)
+        await self.send_namedays(channel)
+
+    @namedays_announcement.before_loop
+    async def before_namedays_announcement(self):
+        await self.bot.wait_until_ready()
+
+        now = datetime.utcnow() + timedelta(hours=3)
+        future = now.replace(hour=6, minute=0, second=0, microsecond=0)
+
+        if now >= future:
+            future += timedelta(days=1)
+
+        await discord.utils.sleep_until(future)
+
+    def fetch_namedays(self, date):
+        self.cursor.execute("""
+            SELECT country, names
+            FROM namedays
+            WHERE date = ?;
+        """, (date,))
+        return self.cursor.fetchall()
+
+    async def send_namedays(self, channel):
+        today = (datetime.utcnow() + timedelta(hours=3)).strftime("%m.%d.")
+        rows = self.fetch_namedays(today)
+
+        names = {"lv": "", "lt": "", "ee": ""}
+
+        for country, names_str in rows:
+            names[country] = names_str
+
+        response = ""
+        for country, names_str in names.items():
+            if names_str:
+                country_name = {
+                    "lv": "Latvian",
+                    "lt": "Lithuanian",
+                    "ee": "Estonian"
+                }[country]
+                response += f"**{country_name} Name Days:** {names_str}\n"
+
+        if response:
+            await channel.send(f"**Name Days for {today}**\n{response}")
+        else:
+            await channel.send(f"No name days today for {today}!")
 
     @app_commands.command(name="namedays", description="Get Baltic name days for today")
     async def namedays(self, interaction: discord.Interaction):
-        # Get today's date in the format "dd.mm."
-        today = datetime.today()
-        current_date = today.strftime("%d.%m.")
+        today = (datetime.utcnow() + timedelta(hours=3)).strftime("%m.%d.")
+        rows = self.fetch_namedays(today)
 
-        # Initialize variables to store today's name days for each country
-        names_lv = ""
-        names_lt = ""
-        names_ee = ""
+        names = {"lv": "", "lt": "", "ee": ""}
 
-        # Define the file paths
-        files = {
-            "Latvian": "cogs/namedays/namedays_lv.csv",
-            "Lithuanian": "cogs/namedays/namedays_lt.csv",
-            "Estonian": "cogs/namedays/namedays_ee.csv"
-        }
+        for country, names_str in rows:
+            names[country] = names_str
 
-        # Iterate over the files to find name days
-        for country, file_path in files.items():
-            with open(file_path, "r", encoding="utf-8") as csv_file:
-                csv_reader = csv.reader(csv_file, delimiter=';')
-                for row in csv_reader:
-                    # Assuming the first column is the date and the second column is the names
-                    date = row[0].strip()  # Remove any extra whitespace
-                    names = row[1].strip()  # Remove any extra whitespace
-
-                    # Check if the date matches today's date
-                    if date == current_date:
-                        if country == "Latvian":
-                            names_lv = names
-                        elif country == "Lithuanian":
-                            names_lt = names
-                        elif country == "Estonian":
-                            names_ee = names
-                        break  # Exit the loop since we found today's names
-
-        # Create the response message
         response = ""
-        if names_lv:
-            response += f"**Latvian Name Days:** {names_lv}\n"
-        if names_lt:
-            response += f"**Lithuanian Name Days:** {names_lt}\n"
-        if names_ee:
-            response += f"**Estonian Name Days:** {names_ee}\n"
+        for country, names_str in names.items():
+            if names_str:
+                country_name = {
+                    "lv": "Latvian",
+                    "lt": "Lithuanian",
+                    "ee": "Estonian"
+                }[country]
+                response += f"**{country_name} Name Days:** {names_str}\n"
 
-        # Send the message, or if no name days were found, inform the user
         if response:
             await interaction.response.send_message(response, ephemeral=True)
         else:
-            await interaction.response.send_message("No name days today!", ephemeral=True)
+            await interaction.response.send_message(f"No name days today for {today}!", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Namedays(bot))
